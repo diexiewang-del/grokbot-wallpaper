@@ -25,6 +25,8 @@
  * back when the window grows. ?sheet=open starts with the sheet expanded (for screenshots).
  */
 
+import { groupThreads } from '../lib/chat.js';
+
 // Resolved against this file, so it works from /web/index.html, from a server rooted at web/, and from the harness.
 const THUMB_BASE = new URL('../../assets/blobs/thumbs/', import.meta.url).href;
 // the product logo, exactly as is (a 400x400 square), shown small in the brand pill
@@ -85,6 +87,7 @@ const ICON = {
   eyeOff: '<svg class="bhq-eye-off" viewBox="0 0 16 16" width="16" height="16" aria-hidden="true"><path d="M1.6 8s2.4-4.4 6.4-4.4S14.4 8 14.4 8 12 12.4 8 12.4 1.6 8 1.6 8z" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linejoin="round" opacity=".55"/><path d="M3 13L13 3" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/></svg>',
   check: '<svg viewBox="0 0 16 16" width="13" height="13" aria-hidden="true"><path d="M3.5 8.6l3 3 6-6.6" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>',
   share: '<svg viewBox="0 0 20 20" width="20" height="20" aria-hidden="true"><path d="M10 12.2V2.9M6.7 6.1L10 2.8l3.3 3.3" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"/><path d="M7.2 8.7H6A1.8 1.8 0 0 0 4.2 10.5v5A1.8 1.8 0 0 0 6 17.3h8a1.8 1.8 0 0 0 1.8-1.8v-5A1.8 1.8 0 0 0 14 8.7h-1.2" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round"/></svg>',
+  crown: '<svg viewBox="0 0 16 16" width="12" height="12" aria-hidden="true"><path d="M2.2 12.2h11.6L12.6 6.2 10 8.6 8 4.2 6 8.6 3.4 6.2z" fill="currentColor"/></svg>',
 };
 
 const reducedMotion = typeof matchMedia === 'function' ? matchMedia('(prefers-reduced-motion: reduce)') : { matches: false };
@@ -544,10 +547,11 @@ function makeFloor(id) {
   const name = h('b', { class: 'bhq-fname' });
   const dots = h('span', { class: 'bhq-fdots', 'aria-hidden': 'true' });
   const count = h('span', { class: 'bhq-num bhq-fcount' });
+  const accent = h('i', { class: 'bhq-faccent', 'aria-hidden': 'true' });
   const btn = h('button', { class: 'bhq-floor', type: 'button', 'data-id': id },
-    num, h('span', { class: 'bhq-ftext' }, name, dots), count);
+    accent, num, h('span', { class: 'bhq-ftext' }, name, dots), count);
   btn.addEventListener('click', () => { if (U.h.onSelectFloor) U.h.onSelectFloor(id); });
-  return { btn, num, name, dots, count, dotEls: [] };
+  return { btn, num, name, dots, count, accent, dotEls: [] };
 }
 
 /* ------------------------------------------------------------------ build: panel (floor team / bot card) */
@@ -581,14 +585,16 @@ function buildPanel(root) {
 
   const av = makeAva({ cls: 'bhq-ava--lg' });
   const name = h('h2', { class: 'bhq-h2', tabindex: '-1' });
+  const boss = h('span', { class: 'bhq-boss', hidden: true, title: 'Boss' }, svg(ICON.crown), h('span', { text: 'Boss' }));
   const where = h('p', { class: 'bhq-sub' });
+  const persona = h('p', { class: 'bhq-persona', hidden: true });
   const stDot = h('i', { class: 'bhq-dot', 'aria-hidden': 'true' });
   const stTxt = h('span');
   const status = h('span', { class: 'bhq-status' }, stDot, stTxt);
   const now = h('p', { class: 'bhq-now' });
   const hero = h('div', { class: 'bhq-hero bhq-surface bhq-glow', 'data-s': 'idle' },
     close,
-    h('div', { class: 'bhq-head' }, av.root, h('div', { class: 'bhq-head-text' }, name, where)),
+    h('div', { class: 'bhq-head' }, av.root, h('div', { class: 'bhq-head-text' }, h('div', { class: 'bhq-name-row' }, name, boss), where, persona)),
     status, now);
 
   const task = h('p', { class: 'bhq-task' });
@@ -610,8 +616,10 @@ function buildPanel(root) {
 
   const hist = h('ol', { class: 'bhq-steps', role: 'list' });
   const stepsBlock = h('div', { class: 'bhq-stepsblock' }, h('div', { class: 'bhq-label', text: 'Recent steps' }), hist);
+  const talks = h('ol', { class: 'bhq-talks', role: 'list' });
+  const talksBlock = h('div', { class: 'bhq-stepsblock', hidden: true }, h('div', { class: 'bhq-label', text: 'Conversations' }), talks);
 
-  const body = watchFade(h('div', { class: 'bhq-card-body' }, taskBlock, stats, useBlock, stepsBlock));
+  const body = watchFade(h('div', { class: 'bhq-card-body' }, taskBlock, stats, useBlock, talksBlock, stepsBlock));
 
   const cta = h('button', { class: 'bhq-cta', type: 'button', text: 'Open chat', disabled: true, title: 'No chat link yet' });
   cta.addEventListener('click', () => {
@@ -629,8 +637,8 @@ function buildPanel(root) {
   U.panel = {
     root, team, tcard, teamHead: head, teamTitle, teamSub, teamBig: big, nWait, nErr, rowWait, rowErr, lErr, list, teamEmpty,
     card: {
-      root: card, hero, body, av, name, where, status, stDot, stTxt, now, taskBlock, task,
-      sSteps, sTasks, sHours, usageLabel, useBlock, fuel, fillBar, shareNum, hist, histSig: null, cta, fresh: true,
+      root: card, hero, body, av, name, boss, where, persona, status, stDot, stTxt, now, taskBlock, task,
+      sSteps, sTasks, sHours, usageLabel, useBlock, fuel, fillBar, shareNum, hist, histSig: null, talks, talksBlock, talkSig: null, cta, fresh: true,
     },
   };
 }
@@ -647,8 +655,10 @@ function buildFeed(root) {
   root.classList.add('bhq-surface', 'bhq-glow', 'bhq-glow--still');
   const list = h('ol', { class: 'bhq-frows', role: 'list', 'aria-live': 'off' });
   const empty = h('p', { class: 'bhq-note', text: 'No events yet.', hidden: true });
-  root.append(h('div', { class: 'bhq-fhead' }, h('span', { text: 'Activity' })), list, empty);
-  U.feed = { root, list, empty };
+  const threads = h('div', { class: 'bhq-threads bhq-fthreads' });
+  const chatHead = h('div', { class: 'bhq-fhead bhq-fchat-h', hidden: true }, h('span', { text: 'Office chat' }));
+  root.append(chatHead, threads, h('div', { class: 'bhq-fhead' }, h('span', { text: 'Activity' })), list, empty);
+  U.feed = { root, list, empty, threads, chatHead, chatSig: null };
 }
 
 function buildZoom() {
@@ -657,12 +667,27 @@ function buildZoom() {
     b.addEventListener('click', () => { if (U.h.onZoom) U.h.onZoom(dir); });
     return b;
   };
+  const ambianceOn = () => { try { return localStorage.getItem('bothq.ambiance') !== '0'; } catch { return true; } };
+  const amb = h('button', {
+    class: 'bhq-amb', type: 'button', 'aria-pressed': ambianceOn() ? 'true' : 'false',
+    title: 'Local only. Idle motion on this computer — nothing is posted to the feed.',
+    text: ambianceOn() ? 'Ambiance on' : 'Ambiance off',
+  });
+  amb.addEventListener('click', () => {
+    const on = amb.getAttribute('aria-pressed') !== 'true';
+    try { localStorage.setItem('bothq.ambiance', on ? '1' : '0'); } catch { /* private mode */ }
+    window.bothq?.setAmbiance?.(on);
+    setAttr(amb, 'aria-pressed', on ? 'true' : 'false');
+    setText(amb, on ? 'Ambiance on' : 'Ambiance off');
+  });
   const root = own(h('div', { class: 'bhq-zoom bhq-surface', role: 'group', 'aria-label': 'Scene zoom' },
+    amb,
+    h('span', { class: 'bhq-sep', 'aria-hidden': 'true' }),
     mk('z-out', ICON.minus, 'Zoom out', 'out'),
     h('span', { class: 'bhq-sep', 'aria-hidden': 'true' }),
     mk('z-in', ICON.plus, 'Zoom in', 'in')));
   document.body.append(root);
-  U.zoom = { root };
+  U.zoom = { root, amb };
 }
 
 /* ------------------------------------------------------------------ build: dock (waiting on me / finished / routines) */
@@ -706,7 +731,7 @@ function setDockOpen(card, on, save = true) {
   }
   if (save) {
     const o = {};
-    for (const k of ['waiting', 'finished', 'routines']) o[k] = !!d[k].open;
+    for (const k of ['waiting', 'finished', 'routines', 'chat']) o[k] = !!d[k].open;
     lsSet(LS_DOCK, JSON.stringify(o));
   }
   fitDock(d.avail == null ? Infinity : d.avail);
@@ -716,12 +741,13 @@ function setDockOpen(card, on, save = true) {
 function fitDock(avail) {
   const d = U.dock;
   d.avail = avail;
-  const cards = [d.check, d.waiting, d.finished, d.routines];
+  const cards = [d.check, d.chat, d.waiting, d.finished, d.routines];
   const live = cards.filter((c) => !c.root.hidden);
   const on = new Set(live.filter((c) => c.open));
   const need = () => live.reduce((n, c) => n + (on.has(c) ? (c.rows ? DOCK_OPEN_MIN : DOCK_OPEN_EMPTY) : DOCK_HEAD), 0) + DOCK_GAP * Math.max(0, live.length - 1);
   while (on.size && need() > avail) {
-    const victim = d.lru.find((c) => on.has(c)) || [...on][0]; // lru is oldest first
+    // A live office-chat thread keeps the space; fold older cards first.
+    const victim = d.lru.find((c) => on.has(c) && c !== d.chat) || d.lru.find((c) => on.has(c)) || [...on][0];
     on.delete(victim);
   }
   for (const c of cards) paintDockCard(c, on.has(c));
@@ -739,8 +765,9 @@ function setWaitBlur(on, save = true) {
 }
 
 function buildDock(floors, feed) {
-  const root = own(h('aside', { class: 'bhq-dock', 'aria-label': 'Waiting on me, finished work and routines' }));
+  const root = own(h('aside', { class: 'bhq-dock', 'aria-label': 'Office chat, waiting on me, finished work and routines' }));
   const check = dockCard('check', 'Status check');
+  const chat = dockCard('chat', 'Office chat');
   const waiting = dockCard('waiting', 'Waiting on me', { eye: true });
   const finished = dockCard('finished', 'Finished');
   const routines = dockCard('routines', 'Routines');
@@ -762,11 +789,16 @@ function buildDock(floors, feed) {
   check.inner.append(cl, cnote);
   check.root.hidden = true;                                   // only while a check runs
 
-  root.append(check.root, waiting.root, finished.root, routines.root);
+  const threads = h('div', { class: 'bhq-threads' });
+  const chempty = h('p', { class: 'bhq-note', text: 'No conversations yet.', hidden: true });
+  chat.inner.append(threads, chempty);
+  chat.root.hidden = true;
+
+  root.append(check.root, chat.root, waiting.root, finished.root, routines.root);
   document.body.append(root);
 
   U.dock = {
-    root, check, waiting, finished, routines, wlist, wempty, tl, fempty, rl, rempty, cl, cnote,
+    root, check, chat, threads, chempty, chatSig: null, chatAuto: true, waiting, finished, routines, wlist, wempty, tl, fempty, rl, rempty, cl, cnote,
     lru: [], wrows: new Map(), crows: new Map(), checkT: null, finSig: null, finRefs: [], routSig: null, routRefs: [], copied: new Map(), blurred: false,
     floors, feed,
   };
@@ -774,8 +806,11 @@ function buildDock(floors, feed) {
   // open / folded: what the person left last time (the waiting card is open by default)
   let saved = null;
   try { saved = JSON.parse(lsGet(LS_DOCK) || 'null'); } catch { saved = null; }
-  for (const k of ['routines', 'finished', 'waiting']) { // waiting last: it is the one that stays open when there is no room for all
-    setDockOpen(U.dock[k], saved && typeof saved[k] === 'boolean' ? saved[k] : k === 'waiting', false);
+  for (const k of ['routines', 'finished', 'waiting', 'chat']) { // chat last: a live conversation stays open when space is tight
+    const fallback = k === 'waiting';
+    const has = saved && typeof saved[k] === 'boolean';
+    if (k === 'chat' && has) U.dock.chatAuto = false;
+    setDockOpen(U.dock[k], has ? saved[k] : fallback, false);
   }
   waiting.eye.addEventListener('click', () => setWaitBlur(!U.dock.blurred));
   setWaitBlur(lsGet(LS_BLUR) === '1', false);
@@ -1048,7 +1083,7 @@ function setPhone(on, land) {
   html.classList.toggle('bhq-land', U.land);
   if (on && !was) {
     if (p) S.headSlot.append(p.teamHead);
-    S.body.append(...[d && d.waiting.root, p && p.tcard, d && d.finished.root, d && d.routines.root, S.feed].filter(Boolean));
+    S.body.append(...[d && d.chat.root, d && d.waiting.root, p && p.tcard, d && d.finished.root, d && d.routines.root, S.feed].filter(Boolean));
     S.open = S.start || U.land;
     S.start = false;
     sheetMeasure();
@@ -1060,7 +1095,7 @@ function setPhone(on, land) {
     S.body.style.opacity = '';
     S.body.inert = false;
     cardReset();
-    if (d) d.root.append(d.waiting.root, d.finished.root, d.routines.root);
+    if (d) d.root.append(d.check.root, d.chat.root, d.waiting.root, d.finished.root, d.routines.root);
     if (p) p.team.append(p.teamHead, p.tcard);
     if (S.feed) { if (d && d.root.parentNode) d.root.parentNode.insertBefore(S.feed, d.root); else document.body.append(S.feed); }
     for (const k of Object.keys(rootVars)) document.documentElement.style.removeProperty(k);
@@ -1197,8 +1232,11 @@ function renderFloors(state, o) {
     const number = fl.order != null && Number.isFinite(Number(fl.order)) ? Number(fl.order) : list.length - i;
     const ids = floorBotIds(state, fl);
     setText(r.num, number);
-    setText(r.name, fl.name || fl.id);
+    setText(r.name, (fl.boss ? '♛ ' : '') + (fl.name || fl.id));
     setText(r.count, ids.length);
+    setAttr(r.btn, 'data-theme', fl.theme || null);
+    setAttr(r.btn, 'data-boss', fl.boss ? '1' : null);
+    if (fl.accent) r.accent.style.background = fl.accent;
 
     // one tiny lit dot per bot, in desk order
     while (r.dotEls.length < ids.length) { const d = h('i', { class: 'bhq-dot' }); r.dotEls.push(d); r.dots.append(d); }
@@ -1362,7 +1400,7 @@ function renderTeam(state, floor, o) {
     const bot = bots[id];
     const s = effStatus(bot);
     setAvatar(c.av, bot, s);
-    setText(c.name, bot.name || id);
+    setText(c.name, (bot.role === 'boss' ? '♛ ' : '') + (bot.name || id));
     const unrep = s === 'idle' ? unreportedText(bot) : '';
     const quiet = s === 'idle' && bot.status === 'working';   // went silent mid-task: its last step is stale
     setText(c.step, unrep || (quiet ? statusLabel(s) : bot.step || statusLabel(s)));
@@ -1380,6 +1418,13 @@ function renderTeam(state, floor, o) {
 
 /* ---- bot card */
 
+function talkRow(c) {
+  const who = c.to ? `${c.from} → ${c.to}` : `${c.from} → everyone`;
+  return h('li', { class: 'bhq-talk' },
+    h('time', { class: 'bhq-num', text: hhmm(parseTs(c.t)) }),
+    h('span', { text: `${who}: ${c.text}`, title: c.re ? 'Reply' : '' }));
+}
+
 function histRow(ev) {
   return h('li', { class: 'bhq-step-row' },
     h('time', { class: 'bhq-num', text: hhmm(parseTs(ev.t)) }),
@@ -1395,6 +1440,11 @@ function renderCard(state, bot) {
   setAttr(c.hero, 'data-s', s);
   setAvatar(c.av, bot, s);
   setText(c.name, bot.name || bot.id);
+  setHidden(c.boss, bot.role !== 'boss');
+  const persona = typeof bot.persona === 'string' ? bot.persona : '';
+  setHidden(c.persona, !persona);
+  setText(c.persona, persona);
+  setAttr(c.persona, 'title', persona || null);
 
   const fl = (state.floors || []).find((x) => x.id === bot.floor);
   const where = (fl && (fl.name || fl.id)) || bot.group || '';
@@ -1435,6 +1485,15 @@ function renderCard(state, bot) {
     setText(c.shareNum, Math.round(share * 100) + '%');
   }
 
+  const mine = (Array.isArray(state.chats) ? state.chats : []).filter((x) => x && (x.fromId === bot.id || x.toId === bot.id)).slice(-4);
+  const talkSig = bot.id + '\n' + mine.map((x) => x.id + '|' + x.text).join('\n');
+  if (talkSig !== c.talkSig) {
+    c.talkSig = talkSig;
+    c.talks.textContent = '';
+    for (const x of mine) c.talks.append(talkRow(x));
+  }
+  setHidden(c.talksBlock, !mine.length);
+
   // last steps (rebuilt only when they change); the newest entry is usually the current step, already shown above
   let hist = (bot.history || []).slice(0, STEPS_SHOWN + 1);
   if (hist.length > 1 && hist[0].step === bot.step) hist = hist.slice(1);
@@ -1456,6 +1515,16 @@ function renderCard(state, bot) {
 
 /* ---- live feed (last 4 events of the whole building, newest on top) */
 
+function makeSayRow(c) {
+  const line = h('span', { class: 'bhq-ftxt' });
+  const to = c.to || 'everyone';
+  line.append(h('b', { text: c.from || '' }), document.createTextNode(' → '), h('b', { text: to }), document.createTextNode(': ' + (c.text || '')));
+  return h('li', { class: 'bhq-frow bhq-frow-say', 'data-s': 'chat', title: c.re ? 'Reply' : '' },
+    h('time', { class: 'bhq-num', text: hhmm(parseTs(c.t)), datetime: c.t || '' }),
+    h('i', { class: 'bhq-dot', 'data-s': 'chat', 'aria-hidden': 'true' }),
+    line);
+}
+
 function makeRow(ev, state) {
   const bot = state.bots && state.bots[ev.bot];
   const name = ev.name || (bot && bot.name) || ev.bot || '';
@@ -1473,16 +1542,27 @@ function retireRow(row) {
   if (reducedMotion.matches) done(); else setTimeout(done, FEED_OUT_MS);
 }
 
+function activityItems(state) {
+  const rows = [];
+  for (const e of Array.isArray(state.feed) ? state.feed : []) rows.push({ kind: 'status', t: e.t, bot: e.bot, status: e.status, step: e.step, name: e.name, ev: e });
+  for (const c of Array.isArray(state.chats) ? state.chats : []) {
+    if (c.via === 'step') continue; // the status row already shows this step
+    rows.push({ kind: 'say', t: c.t, bot: c.fromId, status: 'chat', step: c.text, name: c.from, say: c });
+  }
+  rows.sort((a, b) => (parseTs(b.t) || 0) - (parseTs(a.t) || 0));
+  return rows.slice(0, FEED_ROWS);
+}
+
 function renderFeed(state) {
   const fd = U.feed;
-  const items = (Array.isArray(state.feed) ? state.feed : []).slice(0, FEED_ROWS);
+  const items = activityItems(state);
 
   // Stable keys; identical events are told apart by counting from the oldest end.
   const seenBase = new Map();
   const keys = new Array(items.length);
   for (let i = items.length - 1; i >= 0; i--) {
     const e = items[i];
-    const base = e.t + '|' + e.bot + '|' + e.status + '|' + e.step;
+    const base = e.kind + '|' + e.t + '|' + e.bot + '|' + (e.kind === 'say' ? e.say.id : e.status + '|' + e.step);
     const n = seenBase.get(base) || 0;
     seenBase.set(base, n + 1);
     keys[i] = n ? base + '#' + n : base;
@@ -1501,7 +1581,7 @@ function renderFeed(state) {
   const els = items.map((ev, i) => {
     let row = U.feedRows.get(keys[i]);
     if (!row) {
-      row = makeRow(ev, state);
+      row = ev.kind === 'say' ? makeSayRow(ev.say) : makeRow(ev.ev || ev, state);
       if (animate) {
         row.classList.add('is-new');
         const settle = () => row.classList.remove('is-new');
@@ -1516,16 +1596,66 @@ function renderFeed(state) {
 
   setHidden(fd.empty, items.length > 0);
   U.feedFirst = false;
+  renderFeedThreads(state);
+}
+
+// Threads live in the activity feed as well as the dock, so a tall building (many floors) cannot
+// fold the conversation out of sight.
+function renderFeedThreads(state) {
+  const fd = U.feed;
+  const threads = groupThreads(state.chats).slice(0, 4);
+  setHidden(fd.chatHead, !threads.length);
+  const sig = threads.map((t) => t.key + ':' + t.lines.length + ':' + (t.lines[t.lines.length - 1]?.id || '')).join('\n');
+  if (sig === fd.chatSig) return;
+  fd.chatSig = sig;
+  fd.threads.textContent = '';
+  for (const t of threads) {
+    const title = t.kind === 'pair' ? `${t.a} ↔ ${t.b}` : `${t.a} → everyone`;
+    const ol = h('ol', { class: 'bhq-thread-lines' });
+    for (const line of t.lines.slice(-3)) {
+      const prefix = line.re ? '↩ ' : '';
+      ol.append(h('li', { text: `${hhmm(parseTs(line.t))}  ${prefix}${line.from}: ${line.text}` }));
+    }
+    fd.threads.append(h('section', { class: 'bhq-thread' }, h('div', { class: 'bhq-thread-h', text: title }), ol));
+  }
 }
 
 /* ---- dock */
 
 function renderDock(state) {
   renderCheck(state);
+  renderChat(state);
   renderWaiting(state);
   renderFinished(state);
   renderRoutines(state);
   layoutDock(); // after the cards know whether they are shown
+}
+
+function renderChat(state) {
+  const d = U.dock;
+  const threads = groupThreads(state.chats).slice(0, 6);
+  setHidden(d.chat.root, !threads.length);
+  if (!threads.length) { d.chatSig = ''; return; }
+  if (d.chatAuto) { d.chatAuto = false; setDockOpen(d.chat, true, false); }
+  const sig = threads.map((t) => t.key + ':' + t.lines.length + ':' + (t.lines[t.lines.length - 1]?.id || '')).join('\n');
+  setText(d.chat.count, String(threads.length));
+  if (sig === d.chatSig) return;
+  d.chatSig = sig;
+  d.threads.textContent = '';
+  for (const t of threads) {
+    const title = t.kind === 'pair' ? `${t.a} ↔ ${t.b}` : `${t.a} → everyone`;
+    const head = h('button', { class: 'bhq-thread-h', type: 'button', text: title });
+    const openId = t.kind === 'pair' ? t.aId : t.aId;
+    head.addEventListener('click', () => { if (U.h.onSelectBot) U.h.onSelectBot(openId); });
+    const ol = h('ol', { class: 'bhq-thread-lines' });
+    for (const line of t.lines.slice(-4)) {
+      const prefix = line.re ? '↩ ' : '';
+      ol.append(h('li', { text: `${hhmm(parseTs(line.t))}  ${prefix}${line.from}: ${line.text}` }));
+    }
+    d.threads.append(h('section', { class: 'bhq-thread' }, head, ol));
+  }
+  d.chat.rows = threads.length;
+  setCls(d.chat.root, 'has-rows', threads.length > 0);
 }
 
 function botFor(state, id, fallbackName) {

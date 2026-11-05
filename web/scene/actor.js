@@ -79,6 +79,24 @@ export class Actor {
     this.tag.visible = false;
     this.pivot.add(this.tag);
 
+    this.emoteEl = document.createElement('div');
+    this.emoteEl.className = 'hq-emote';
+    this.emoteEl.title = 'Local ambiance. Not a posted message.';
+    this.emoteEl.dataset.local = 'ambiance';
+    this.emoteTag = new CSS2DObject(this.emoteEl);
+    this.emoteTag.position.y = MODEL_HEIGHT + 0.62;
+    this.emoteTag.visible = false;
+    this.pivot.add(this.emoteTag);
+    this.boss = false;
+    this.crown = null;
+    this.peer = null;
+    this.peerUntil = -1;
+    this.talking = false;
+    this.ambiance = true;
+    this.emote = null;
+    this.emoteYaw = 0;
+    this.nextEmote = 8 + Math.random() * 14;
+
     this.setPlaceholderModel(bot.color);
     ctx.parent.add(this.root);
   }
@@ -149,6 +167,7 @@ export class Actor {
     this.tagEl.dataset.status = status;
     this.tagEl.style.setProperty('--c', color);
     this.selected = view.selectedBot === bot.id;
+    this.setBoss(bot.role === 'boss');
     this.renderTag();
 
     if (spot && (!this.spot || this.spot.pos.distanceToSquared(spot.pos) > 1e-4)) {
@@ -199,6 +218,47 @@ export class Actor {
     for (const o of this.pickMeshes || []) this.ctx.pickables.delete(o);
     this.tagEl.dataset.mode = 'off';
     this.tag.visible = false;
+    this.emoteTag.visible = false;
+  }
+
+  setBoss(on) {
+    if (!!on === this.boss) return;
+    this.boss = !!on;
+    if (!on) { this.crown?.removeFromParent(); this.crown = null; return; }
+    const mat = new THREE.MeshStandardMaterial({ color: 0xE2B657, metalness: 0.55, roughness: 0.28, emissive: 0x8A6418, emissiveIntensity: 0.35 });
+    const g = new THREE.Group();
+    const band = new THREE.Mesh(new THREE.CylinderGeometry(0.13, 0.15, 0.05, 12), mat);
+    g.add(band);
+    for (let i = 0; i < 3; i++) {
+      const p = new THREE.Mesh(new THREE.ConeGeometry(0.04, 0.11, 6), mat);
+      const a = (i / 3) * Math.PI * 2;
+      p.position.set(Math.cos(a) * 0.1, 0.08, Math.sin(a) * 0.1);
+      g.add(p);
+    }
+    g.position.y = 1.02;
+    g.name = 'boss_crown';
+    this.pivot.add(g);
+    this.crown = g;
+  }
+
+  /** Turn toward another bot, or look up/down toward another floor. `until` is scene time in seconds. */
+  notice(peer, until) {
+    const prev = this.peer;
+    const same = prev && peer && prev.up === peer.up && prev.x === peer.x && prev.z === peer.z;
+    this.peer = peer;
+    this.peerUntil = until;
+    if (!same && !this.anim && !this.retiring) this.hop(0.16);
+  }
+
+  setTalking(on) {
+    this.talking = !!on;
+    if (on) this.hideEmote();
+  }
+
+  hideEmote() {
+    this.emote = null;
+    this.emoteYaw = 0;
+    if (this.emoteTag) this.emoteTag.visible = false;
   }
 
   // ---------- motion ----------
@@ -279,6 +339,21 @@ export class Actor {
         this.nextAction -= dt;
         if (this.nextAction <= 0) { this.hop(0.32); this.nextAction = 1.7 + Math.random() * 0.6; }
       }
+      // Local idle motion only. The symbols are a fixed set, never text from the feed, and nothing is posted.
+      if (this.ambiance && s === 'idle' && !this.anim && !this.talking && !(this.peer && t < this.peerUntil)) {
+        this.nextEmote -= dt;
+        if (this.nextEmote <= 0) {
+          const kind = hash(`${this.id}:${Math.floor(t)}`) % 3;
+          if (kind === 0) this.hop(0.12);
+          else if (kind === 1) this.emote = { kind: 'stretch', t: 0, dur: 1.15 };
+          else {
+            this.emote = { kind: 'glance', t: 0, dur: 1.3, yaw: (hash(this.id) % 2 ? 0.45 : -0.45) };
+            this.emoteEl.textContent = ['z', '♪', '…'][hash(this.id) % 3];
+            this.emoteTag.visible = true;
+          }
+          this.nextEmote = 12 + (hash(this.id + 'e') % 120) / 10;
+        }
+      }
     }
 
     // one-shot animation
@@ -306,6 +381,13 @@ export class Actor {
         this.anim = null;
       }
     }
+    if (this.emote) {
+      this.emote.t += dt;
+      const k = clamp(this.emote.t / this.emote.dur, 0, 1);
+      if (this.emote.kind === 'stretch') sy *= 1 + 0.08 * Math.sin(k * Math.PI);
+      else this.emoteYaw = this.emote.yaw * Math.sin(k * Math.PI);
+      if (k >= 1) this.hideEmote();
+    }
 
     // ---- cursor: look toward it, glance with the eyes, hop when it is close ----
     const cur = this.ctx.cursor;
@@ -320,12 +402,20 @@ export class Actor {
 
     const base = (this.baseYaw || 0) + (this.anim?.kind === 'travel' ? 0 : RESTING_TURN);
     let target = base;
+    const peerOn = this.peer && t < this.peerUntil;
     if (this.hovered || this.selected) target = CAMERA_YAW;
-    else if (w > 0) {
+    else if (peerOn && !this.peer.up) {
+      const yaw = Math.atan2(this.peer.x - this.root.position.x, this.peer.z - this.root.position.z);
+      const seated = !this.spotIsLounge() && s !== 'idle';
+      const lim = seated ? 0.95 : 1.9;
+      target = base + clamp(angleDiff(yaw, base), -lim, lim);
+    } else if (w > 0) {
       const seated = !this.spotIsLounge() && s !== 'idle';
       const lim = seated ? 0.8 : 1.9;                               // seated bots never leave the desk
       target = base + clamp(angleDiff(lookYaw, base), -lim, lim) * w;
     }
+    if (this.emoteYaw) target += this.emoteYaw;
+    if (peerOn && this.peer.up) rx += this.peer.up > 0 ? -0.28 : 0.18;
     this.yawS.target = this.yawS.x + angleDiff(target, this.yawS.x);
     this.yawS.step(dt);
 
@@ -388,6 +478,8 @@ export class Actor {
     this.endCelebration();
     for (const o of this.pickMeshes || []) this.ctx.pickables.delete(o);
     this.tagEl.remove();
+    this.emoteEl?.remove();
+    this.crown?.traverse((o) => { if (o.isMesh) o.material?.dispose?.(); });
     this.root.removeFromParent();
   }
 }
