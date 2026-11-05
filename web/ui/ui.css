@@ -378,6 +378,27 @@
 .bhq-cta:not(:disabled):active { transform: scale(.97); }
 .bhq-cta:disabled { background: rgba(255, 255, 255, .1); color: var(--dim); box-shadow: none; }
 
+/* ====================================================================== left column: floors, dock, feed — one scrollable stack */
+
+#bhq-left {
+  position: fixed; z-index: 20; left: var(--gutter, 24px); top: var(--below-top, 96px);
+  width: min(360px, calc(100vw - 2 * var(--gutter, 24px)));
+  max-height: calc(100vh - var(--below-top, 96px) - var(--gutter, 24px));
+  max-height: calc(100dvh - var(--below-top, 96px) - var(--gutter, 24px));
+  display: flex; flex-direction: column; gap: 8px;
+  overflow-x: hidden; overflow-y: auto; overscroll-behavior: contain;
+  pointer-events: none; scrollbar-width: thin;
+}
+#bhq-left > * { pointer-events: auto; flex: 0 0 auto; min-height: 0; }
+#bhq-left #floors,
+#bhq-left #feed,
+#bhq-left .bhq-dock {
+  position: relative; left: auto; right: auto; top: auto; bottom: auto;
+  width: 100%; max-height: none;
+}
+.bhq-phone #bhq-left { display: contents; }
+.bhq-phone #bhq-left #floors { position: fixed; }
+
 /* ====================================================================== live feed */
 
 #feed { padding: 14px 16px 12px; border-radius: 22px; }
@@ -437,8 +458,8 @@
    Three slim cards under the floors; each folds to its header. ui.js sets top and max-height (below the floors, above the feed). */
 
 .bhq-dock {
-  position: fixed; z-index: 20; left: var(--gutter, 24px); top: 380px;
-  width: min(320px, calc(100vw - 2 * var(--gutter, 24px)));
+  position: relative; z-index: 1; left: auto; top: auto;
+  width: 100%;
   display: flex; flex-direction: column; gap: 8px; pointer-events: none;
 }
 .bhq-dcard { flex: 0 1 auto; min-height: 44px; border-radius: 22px; display: flex; flex-direction: column; pointer-events: auto; }

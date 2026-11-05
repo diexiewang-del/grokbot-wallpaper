@@ -230,7 +230,7 @@ function settle(seconds = 3) {
     stepCamera(step);
     building.update(step, performance.now());
     for (const a of actors.values()) { a.hostAlpha = building.activeOpen()?.alpha ?? 1; a.ambiance = ambiance; a.tick(step, nowSec); }
-    talk?.tick(step, nowSec, actors, building);
+    if (seconds < 2) talk?.tick(step, nowSec, actors, building);
     for (const a of retiring) { a.tick(step, nowSec); if (a.dead) retiring.delete(a); }
   }
 }

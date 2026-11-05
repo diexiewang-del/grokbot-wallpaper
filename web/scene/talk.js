@@ -4,7 +4,7 @@ import * as THREE from 'three';
 import { CSS2DObject } from 'three/addons/renderers/CSS2DRenderer.js';
 import { FLOOR_STEP } from './office.js';
 
-const LIFE = 5.6;
+const LIFE = 9;
 const GAP = 0.8;
 const MAX_ON = 2;
 const QUEUE_MAX = 8;
@@ -103,7 +103,7 @@ export class TalkDirector {
     if (c.re) el.title = 'Reply';
     const obj = new CSS2DObject(el);
     obj.center.set(0.5, 1);
-    obj.position.y = (host.tag?.position.y || 1.24) + (host.boss ? 0.62 : 0.46);
+    obj.position.y = (host.tag?.position.y || 1.24) + 0.08;
     host.pivot.add(obj);
     const live = { c, obj, el, host, speaker, listener, until: nowSec + LIFE, line: null, anchor: null, tip: null };
     if (speaker && c.toId && !listener) live.line = this.makeBeam(c, state);

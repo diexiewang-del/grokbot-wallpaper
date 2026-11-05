@@ -432,6 +432,13 @@ function own(el) { U.owned.push(el); return el; }
 
 export function initUI(handlers) {
   if (U) {
+    const left = document.getElementById('bhq-left');
+    if (left) {
+      const keepF = document.getElementById('floors');
+      const keepFeed = document.getElementById('feed');
+      if (keepF) document.body.append(keepF);
+      if (keepFeed) document.body.append(keepFeed);
+    }
     if (U.keyHandler) document.removeEventListener('keydown', U.keyHandler);
     if (U.onResize) removeEventListener('resize', U.onResize);
     if (U.ro) U.ro.disconnect();
@@ -461,7 +468,11 @@ export function initUI(handlers) {
   if (panel) buildPanel(panel); else console.warn('[ui] #panel not found');
   buildFeed(feed);
   buildZoom();
-  buildDock(floors, feed);
+  const left = own(h('aside', { id: 'bhq-left', class: 'bhq-left' }));
+  document.body.append(left);
+  if (floors) left.append(floors);
+  left.append(feed);
+  buildDock(floors, feed, left);
   buildSheet(feed);
   watchPhone();
 
@@ -655,10 +666,8 @@ function buildFeed(root) {
   root.classList.add('bhq-surface', 'bhq-glow', 'bhq-glow--still');
   const list = h('ol', { class: 'bhq-frows', role: 'list', 'aria-live': 'off' });
   const empty = h('p', { class: 'bhq-note', text: 'No events yet.', hidden: true });
-  const threads = h('div', { class: 'bhq-threads bhq-fthreads' });
-  const chatHead = h('div', { class: 'bhq-fhead bhq-fchat-h', hidden: true }, h('span', { text: 'Office chat' }));
-  root.append(chatHead, threads, h('div', { class: 'bhq-fhead' }, h('span', { text: 'Activity' })), list, empty);
-  U.feed = { root, list, empty, threads, chatHead, chatSig: null };
+  root.append(h('div', { class: 'bhq-fhead' }, h('span', { text: 'Activity' })), list, empty);
+  U.feed = { root, list, empty };
 }
 
 function buildZoom() {
@@ -764,7 +773,7 @@ function setWaitBlur(on, save = true) {
   if (save) lsSet(LS_BLUR, d.blurred ? '1' : '0');
 }
 
-function buildDock(floors, feed) {
+function buildDock(floors, feed, left) {
   const root = own(h('aside', { class: 'bhq-dock', 'aria-label': 'Office chat, waiting on me, finished work and routines' }));
   const check = dockCard('check', 'Status check');
   const chat = dockCard('chat', 'Office chat');
@@ -795,7 +804,8 @@ function buildDock(floors, feed) {
   chat.root.hidden = true;
 
   root.append(check.root, chat.root, waiting.root, finished.root, routines.root);
-  document.body.append(root);
+  if (left) left.insertBefore(root, feed || null);
+  else document.body.append(root);
 
   U.dock = {
     root, check, chat, threads, chempty, chatSig: null, chatAuto: true, waiting, finished, routines, wlist, wempty, tl, fempty, rl, rempty, cl, cnote,
@@ -831,7 +841,13 @@ function shown(el) { return !!el && el.getClientRects().length > 0; }
 function layoutDock() {
   const d = U && U.dock;
   if (!d) return;
-  if (U.phone) { fitDock(Infinity); updateFades(); return; } // in the sheet the cards simply stack and the sheet scrolls
+  if (U.phone || d.root.parentElement?.id === 'bhq-left') {
+    d.root.style.top = '';
+    d.root.style.maxHeight = '';
+    fitDock(Infinity); // the left column scrolls; cards stack instead of covering the feed
+    updateFades();
+    return;
+  }
   const gutter = 24;
   // offsetTop/offsetHeight ignore the cards' entrance transform
   const top = shown(d.floors) ? d.floors.offsetTop + d.floors.offsetHeight + 10 : 96;
@@ -1097,7 +1113,12 @@ function setPhone(on, land) {
     cardReset();
     if (d) d.root.append(d.check.root, d.chat.root, d.waiting.root, d.finished.root, d.routines.root);
     if (p) p.team.append(p.teamHead, p.tcard);
-    if (S.feed) { if (d && d.root.parentNode) d.root.parentNode.insertBefore(S.feed, d.root); else document.body.append(S.feed); }
+    if (S.feed) {
+      const left = document.getElementById('bhq-left');
+      if (left) left.append(S.feed);
+      else if (d && d.root.parentNode) d.root.parentNode.insertBefore(S.feed, d.root);
+      else document.body.append(S.feed);
+    }
     for (const k of Object.keys(rootVars)) document.documentElement.style.removeProperty(k);
     rootVars = {};
   } else if (on) {
@@ -1596,28 +1617,6 @@ function renderFeed(state) {
 
   setHidden(fd.empty, items.length > 0);
   U.feedFirst = false;
-  renderFeedThreads(state);
-}
-
-// Threads live in the activity feed as well as the dock, so a tall building (many floors) cannot
-// fold the conversation out of sight.
-function renderFeedThreads(state) {
-  const fd = U.feed;
-  const threads = groupThreads(state.chats).slice(0, 4);
-  setHidden(fd.chatHead, !threads.length);
-  const sig = threads.map((t) => t.key + ':' + t.lines.length + ':' + (t.lines[t.lines.length - 1]?.id || '')).join('\n');
-  if (sig === fd.chatSig) return;
-  fd.chatSig = sig;
-  fd.threads.textContent = '';
-  for (const t of threads) {
-    const title = t.kind === 'pair' ? `${t.a} ↔ ${t.b}` : `${t.a} → everyone`;
-    const ol = h('ol', { class: 'bhq-thread-lines' });
-    for (const line of t.lines.slice(-3)) {
-      const prefix = line.re ? '↩ ' : '';
-      ol.append(h('li', { text: `${hhmm(parseTs(line.t))}  ${prefix}${line.from}: ${line.text}` }));
-    }
-    fd.threads.append(h('section', { class: 'bhq-thread' }, h('div', { class: 'bhq-thread-h', text: title }), ol));
-  }
 }
 
 /* ---- dock */
