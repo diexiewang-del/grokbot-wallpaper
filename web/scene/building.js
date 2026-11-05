@@ -9,6 +9,8 @@ import { Spring, smoothstep } from './spring.js';
 import { FLOOR_STEP, SLAB, SHAFT_POS } from './office.js';
 import { WallDisplays } from './walls.js';
 import { floorStyles, applyFloorStyle, styleObjects, styleNightMaps } from './floorstyle.js';
+import { themeForFloor, themeAccent } from '../lib/themes.js';
+import { applyOfficeTheme } from './themes.js';
 
 const LIFT = 20;                        // how far upper floors slide up, out of the frame (m)
 const SWAP_AT = 0.14;                   // s after a switch starts: blur peak, open/closed swap
@@ -17,6 +19,21 @@ const BLUR_PX = 7;
 const REDUCED = typeof matchMedia === 'function' && matchMedia('(prefers-reduced-motion: reduce)').matches;
 const CAB_H = 2.2;
 const NIGHT_TINT = [0.2, 0.26, 0.42];   // used when a baked mesh has no night lightmap
+
+function paintBossTrim(obj, on, closed) {
+  let trim = obj.getObjectByName('boss_trim');
+  if (!on) { if (trim) trim.visible = false; return; }
+  if (!trim) {
+    trim = new THREE.Mesh(
+      new THREE.BoxGeometry(closed ? 10.4 : 12.2, closed ? 0.07 : 0.03, closed ? 0.08 : 0.1),
+      new THREE.MeshBasicMaterial({ color: 0xE2B657 }),
+    );
+    trim.name = 'boss_trim';
+    trim.position.set(0, closed ? 0.62 : 0.02, closed ? 6.16 : 5.55);
+    obj.add(trim);
+  }
+  trim.visible = true;
+}
 
 // Night lightmaps (assets/office/night/<mesh name>.jpg) are loaded lazily, only once --night > 0, shared by every
 // floor clone and disposed again after a stretch of full day (they are big: 3072x2304 for the floor).
@@ -252,8 +269,19 @@ export class Building {
   setFloors(floors) {
     const list = floors.length ? floors : [{ id: '_', name: '', order: 1 }];
     const sig = list.map((f) => f.id).join('|');
-    list.forEach((f, i) => { const s = this.byId.get(f.id); if (s) { s.name = f.name; s.index = i; } });
-    if (sig === this.sig) return;
+    list.forEach((f, i) => {
+      const s = this.byId.get(f.id);
+      if (!s) return;
+      s.name = f.name;
+      s.index = i;
+      s.theme = f.theme || themeForFloor(f.name, f.id);
+      s.boss = !!f.boss || s.theme === 'boss';
+    });
+    if (sig === this.sig) {
+      this.markBosses();
+      if (this.activeSlot) this.applyStyle(this.activeSlot);
+      return;
+    }
     this.sig = sig;
     this.styles = this.assets.style ? floorStyles(list) : new Map();
     const keep = new Map(list.map((f, i) => [f.id, i]));
@@ -261,7 +289,12 @@ export class Building {
     this.slots = list.map((f, i) => {
       let s = this.byId.get(f.id);
       if (!s) {
-        s = { id: f.id, name: f.name, index: i, closed: new Instance(this, this.assets.templates.floor_closed, 'closed'), open: null, lift: new Spring(1, 0.5), showOpen: false };
+        s = {
+          id: f.id, name: f.name, index: i,
+          theme: f.theme || themeForFloor(f.name, f.id),
+          boss: !!f.boss || (f.theme || themeForFloor(f.name, f.id)) === 'boss',
+          closed: new Instance(this, this.assets.templates.floor_closed, 'closed'), open: null, lift: new Spring(1, 0.5), showOpen: false,
+        };
         this.group.add(s.closed.root);
         s.closed.setShown(false);
         this.byId.set(f.id, s);
@@ -271,19 +304,45 @@ export class Building {
     });
     for (const [id] of [...this.byId]) if (!keep.has(id)) this.byId.delete(id);
     this.activeIndex = Math.min(this.activeIndex, this.slots.length - 1);
+    this.markBosses();
     if (this.activeSlot) this.applyStyle(this.activeSlot);   // a floor added before it may move its corner / colour
     this.retarget(false);
+  }
+
+  // A gold edge on the boss's floor, including the closed module you see from another storey.
+  markBosses() {
+    for (const s of this.slots) this.markBoss(s);
+  }
+
+  markBoss(slot) {
+    paintBossTrim(slot.closed.obj, !!slot.boss, true);
+    if (slot.open) paintBossTrim(slot.open.obj, !!slot.boss, false);
   }
 
   // The floor's accent + lounge corner on its open instance. For the active floor the lounge seats follow the corner:
   // spots that move are new objects, so a seated bot walks over to its new seat (scene.js reads assets.spots.lounges).
   applyStyle(slot) {
+    if (!slot.open) return;
     const st = this.styles.get(slot.id);
-    if (!st || !slot.open) return;
-    applyFloorStyle(slot.open.obj, st);
-    slot.open.walls?.setAccent(st.accent);
-    if (slot !== this.activeSlot) return;
+    const theme = slot.theme || themeForFloor(slot.name, slot.id);
+    const accent = themeAccent(theme) || st?.accent;
+    if (st) {
+      applyFloorStyle(slot.open.obj, { accent: accent || st.accent, layout: st.layout });
+      slot.open.walls?.setAccent(accent || st.accent);
+    }
+    applyOfficeTheme(slot.open.obj, theme, slot.name || '');
+    this.markBoss(slot);
+    if (slot !== this.activeSlot || !st || !this.assets.style) return;
     const lounges = this.assets.spots.lounges;
+    if (!this.loungeHome) this.loungeHome = lounges.map((s) => (s ? { pos: s.pos.clone(), yaw: s.yaw, lounge: true } : s));
+    // Themed floors keep the GLB seats (centre of the lounge). Style corners would walk idle bots into the props.
+    if (theme !== 'default') {
+      this.loungeHome.forEach((home, i) => {
+        const cur = lounges[i];
+        if (home && (!cur || cur.pos.distanceToSquared(home.pos) > 1e-6 || cur.yaw !== home.yaw)) lounges[i] = { pos: home.pos.clone(), yaw: home.yaw, lounge: true };
+      });
+      return;
+    }
     this.assets.style.layouts[st.layout].forEach((s, i) => {
       const cur = lounges[i];
       if (!cur || cur.pos.distanceToSquared(s.pos) > 1e-6 || cur.yaw !== s.yaw) lounges[i] = { pos: s.pos.clone(), yaw: s.yaw, lounge: true };

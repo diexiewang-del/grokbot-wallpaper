@@ -2,7 +2,7 @@
 // `wall_screen` and `task_board` of the open floor (CONTRACT v2.5). Redrawn only when the data changes (≤ 1/s).
 import * as THREE from 'three';
 
-const FONT = 'Inter, system-ui, -apple-system, "Segoe UI", sans-serif';
+const FONT = 'Inter, "Noto Sans SC", "Noto Sans CJK SC", "PingFang SC", "Microsoft YaHei", system-ui, sans-serif';
 const STATUS = { working: '#34C759', waiting_user: '#FF9F0A', error: '#FF3B30', stuck: '#FF9500', done: '#0A84FF', idle: '#A1A1A6' };
 const RANK = { waiting_user: 0, error: 0, stuck: 0, working: 1, done: 2, idle: 3 };
 const TSK_ID = /^tsk-\d+$/i;
@@ -16,6 +16,7 @@ const fontsPromise = (async () => {
           document.fonts.load('600 24px Inter', 'Today Tasks 0123456789'),
           document.fonts.load('500 24px Inter', 'Working events'),
           document.fonts.load('700 24px Inter', '0123456789'),
+          document.fonts.load('700 34px "Noto Sans SC"', '管理层运维交易视频'),
         ]).then(() => document.fonts.ready),
         new Promise((r) => setTimeout(r, 2500)),
       ]);

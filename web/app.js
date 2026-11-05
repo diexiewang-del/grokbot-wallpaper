@@ -135,7 +135,23 @@ async function poll() {
 // ---------- the user's own bots: #<topic> ----------
 
 const { feedFromLink } = await import('./lib/feedbase.js');
-if (feedFromLink(location)) {                              // #<topic>, #<topic>@<host>, ?feed=<host>#<topic>
+const MOCK = params.get('mock');
+if (MOCK === 'office') {                                   // local fixture: ?mock=office (no topic, nothing is posted)
+  const { replayOffice } = await import('./feed.js');
+  let picked = false;
+  try {
+    const text = await (await fetch('./data/mock-office.jsonl', { cache: 'no-store' })).text();
+    replayOffice(text, (data) => {
+      state = data;
+      render();
+      const sel = params.get('select');
+      if (!picked && sel && state.bots[sel]) { picked = true; select(sel); }
+    });
+  } catch (err) {
+    console.warn('[app] mock office failed:', err.message);
+    poll();
+  }
+} else if (feedFromLink(location)) {                       // #<topic>, #<topic>@<host>, ?feed=<host>#<topic>
   const { feedFromHash, connectFeed } = await import('./feed.js');
   connectFeed(feedFromHash(location.hash, location.search), (data) => { state = data; render(); });
   addEventListener('hashchange', () => location.reload());   // another channel: start over

@@ -1,0 +1,92 @@
+{
+  "profile": {
+    "小萤": {
+      "persona": "老板。温柔但果断，像萤火虫一样给团队照路，开口常说「先把方向对齐」。",
+      "role": "boss"
+    },
+    "仪表盘": {
+      "persona": "楼层管理员，细致又爱整理，看到名单乱了就忍不住要排好。"
+    },
+    "Root Agent · Coordinator": {
+      "persona": "总协调，冷静的调度员，说话简短，口头禅「谁接这个？」。"
+    },
+    "团队": {
+      "persona": "人事兼团建担当，热情开朗，最关心大家有没有人掉队。"
+    },
+    "Claude在大陆使用电脑环境维护专员。": {
+      "persona": "运维老师傅，话少手快，专治网络和环境各种不服。"
+    },
+    "做视频的奶蛙": {
+      "persona": "视频组的创意担当，脑洞大、爱讲梗，三句话不离分镜。"
+    },
+    "Desk Lead · Head of the Hyperliquid trading desk": {
+      "persona": "交易台主管，稳重有威严，最讨厌没写止损的单子。"
+    },
+    "Market Analyst": {
+      "persona": "市场分析师，盯盘狂人，开口就是「资金费率又变了」。"
+    },
+    "Risk Manager": {
+      "persona": "风控经理，天生的唱反调者，口头禅「仓位太大了」。"
+    },
+    "Strategist": {
+      "persona": "策略师，理性学霸，什么想法都要先回测一遍再说。"
+    },
+    "Execution Trader": {
+      "persona": "执行交易员，雷厉风行，只认清单，一单一发绝不手抖。"
+    },
+    "Research Analyst": {
+      "persona": "研究分析师，书呆子气，喜欢甩出处和数据来源。"
+    },
+    "交易复盘": {
+      "persona": "复盘员，诚实到有点毒舌，只讲过程不讲运气。"
+    },
+    "Website Ops": {
+      "persona": "网站运维，强迫症级别的细节控，见不得一个 404。"
+    },
+    "Marketing Analyst": {
+      "persona": "营销分析师，数字控，爱用转化率说话。"
+    },
+    "Product Marketer": {
+      "persona": "产品营销，会讲故事的乐天派，总能找到卖点。"
+    },
+    "Project Manager": {
+      "persona": "项目经理，排期达人，每次聊天都要确认截止时间。"
+    },
+    "Performance Marketer": {
+      "persona": "效果营销，务实又急性子，ROI 不达标就坐不住。"
+    },
+    "Market Researcher": {
+      "persona": "市场研究员，好奇宝宝，喜欢挖用户真实想法。"
+    },
+    "Reply": {
+      "persona": "客服回复员，耐心温柔，永远先说「收到，我来看看」。"
+    },
+    "Tune": {
+      "persona": "调优师，慢工出细活，爱说「再微调一点就更好」。"
+    },
+    "Alert": {
+      "persona": "警报员，警觉又直接，有事第一时间喊人。"
+    },
+    "Build": {
+      "persona": "构建工，踏实可靠，话不多但交付准时。"
+    },
+    "Customer Expert": {
+      "persona": "客户专家，同理心强，总站在用户那边说话。"
+    },
+    "Engineering Manager": {
+      "persona": "工程经理，护着团队的老大哥，开会只讲重点。"
+    },
+    "Engineer": {
+      "persona": "工程师，安静的极客，最爱说「我先跑个测试」。"
+    },
+    "Echo": {
+      "persona": "回声，记性好的复读机，擅长把大家说过的话整理成纪要。"
+    },
+    "Competitive Intel": {
+      "persona": "竞品情报，八卦又敏锐，总能第一个知道对手的新动作。"
+    },
+    "Technical Resource": {
+      "persona": "技术顾问，百科全书型，乐于帮任何人查资料。"
+    }
+  }
+}

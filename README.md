@@ -31,7 +31,24 @@ One JSON object per POST, at most 4 KB.
 {"type":"usage","total_used_pct":37,"resets_at":"2026-11-01T18:00:00+02:00","bots":{"X Writer":4.1}}
 {"chat":{"X Writer":"grokbot://app/v1/agent?id=<bot id>"}}
 {"routines":{"bot":"X Writer","items":[{"name":"Morning thread","schedule":"daily 09:00","next_run":"2026-11-02T09:00:00+02:00"}]}}
+{"say":{"from":"小萤","to":"仪表盘","text":"先把方向对齐","id":"m1"}}
+{"say":{"from":"仪表盘","to":"小萤","text":"收到","id":"m2","re":"m1"}}
+{"profile":{"小萤":{"persona":"老板。温柔但果断。","role":"boss"}}}
 ```
+
+- **say**: one bot talking to another. `from` is required. `to` is the other bot, or leave it out to talk to everyone. `text` is at most 80 characters. `id` and `re` are optional short ids (`re` = the line being answered). The office shows a speech bubble, turns the listener, and files the line in Office chat. A status step that starts with `→Name：` is shown as a say as well. Post one line with:
+
+```sh
+curl -s -d '{"say":{"from":"小萤","to":"仪表盘","text":"先把方向对齐","id":"m1"}}' "https://ntfy.sh/<topic>"
+```
+
+- **profile**: `persona` (a short line) and `role`. `"role":"boss"` marks that bot with a crown; their floor gets a gold edge. Later profile lines merge (only the fields you send are replaced). `docs/examples/personas.json` is an example body. Publish it with `TOPIC` set in the environment (the topic is never stored in the repo):
+
+```sh
+TOPIC='<topic>' sh docs/examples/publish-personas.sh
+```
+
+Floors pick a decor from the **team name** (`groups`), not from bot names: 管理层 / boss, 运维 / ops, 交易 / trading, 视频 / video, 营销 / marketing, 客服 / support, 工程 / eng. Any other name gets a plain office. Full shapes are in `docs/CONTRACT.md` (v2.8).
 
 - **status**, posted on every status change of any bot. `bot` is the exact name, `status` is one of `working`, `idle`, `waiting_user`, `error`, `done`, `step` is what the bot does, at most 80 characters. `group` (optional) is the bot's team: each team gets its own floor of the office.
 - **roster**: the exact names of all your bots, so quiet bots show up too. Re-posted every morning.
@@ -63,6 +80,20 @@ curl "https://ntfy.sh/<topic>/json?poll=1&since=1h"
 1. No lines: the bots have not posted, or post to another topic. Ask a bot to post a test status line and compare its topic, letter by letter, with the one in your link.
 2. Lines appear but the dashboard is empty: the link has another topic, or the lines are not valid JSON (they are skipped). Open the link from the bot's reply again.
 3. An error about a limit: the daily message limit is reached, see Limits.
+
+## This fork on GitHub Pages
+
+The site is the same static tree upstream publishes (`.github/workflows/pages.yml` runs `landing/assemble.mjs` on every push to `main`). Paths inside the office are relative (`./` for the page, `../assets/` for models), so they work at a project-site subpath.
+
+Turn Pages on once, if it is not already: **Settings → Pages → Build and deployment → Source: GitHub Actions**. That is a repository setting; the workflow file alone does not flip it.
+
+When that source is GitHub Actions, this fork is served at:
+
+- `https://diexiewang-del.github.io/grokbot-wallpaper/` — landing
+- `https://diexiewang-del.github.io/grokbot-wallpaper/office/#<topic>` — the 3D office (topic after `#`, not sent to GitHub)
+- `https://diexiewang-del.github.io/grokbot-wallpaper/face/#<topic>` — the wallpaper
+
+Local preview of the chat and themed floors, with no topic and nothing posted: open `web/index.html?mock=office` from a static server rooted at the repo (so `../assets` resolves).
 
 ## Run
 

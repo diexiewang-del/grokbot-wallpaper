@@ -1,0 +1,21 @@
+{"roster":["小萤","Echo","仪表盘","Root Agent · Coordinator","Market Analyst","Strategist","做视频的奶蛙","Product Marketer","Reply","Engineer","Research Analyst"]}
+{"groups":{"小萤":"管理层","Echo":"管理层","仪表盘":"运维","Root Agent · Coordinator":"运维","Market Analyst":"交易台","Strategist":"交易台","做视频的奶蛙":"视频组","Product Marketer":"营销","Reply":"客服","Engineer":"工程","Research Analyst":"研究"}}
+{"looks":{"小萤":{"shape":"sphere","color":"#F5C542","accessory":"stem"},"Echo":{"shape":"cloud","color":"#F2C1D8","accessory":"none"},"仪表盘":{"shape":"rounded_square","color":"#3DDC97","accessory":"glasses"},"Root Agent · Coordinator":{"shape":"hexagon","color":"#5B6B7C","accessory":"antenna"},"Market Analyst":{"shape":"triangle","color":"#E23B4A","accessory":"none"},"Strategist":{"shape":"pentagon","color":"#1F6B4A","accessory":"none"},"做视频的奶蛙":{"shape":"flower","color":"#7C6BF0","accessory":"bow"},"Product Marketer":{"shape":"star4","color":"#F2784B","accessory":"none"},"Reply":{"shape":"pill","color":"#4C8DFF","accessory":"none"},"Engineer":{"shape":"rounded_cube","color":"#62D26F","accessory":"none"},"Research Analyst":{"shape":"drop","color":"#8E9DB1","accessory":"glasses"}}}
+{"profile":{"小萤":{"persona":"老板。温柔但果断，像萤火虫一样给团队照路，开口常说「先把方向对齐」。","role":"boss"},"Echo":{"persona":"记性好，擅长把大家说过的话整理成纪要。","role":"member"},"仪表盘":{"persona":"楼层管理员，细致又爱整理，看到名单乱了就忍不住要排好。"},"Market Analyst":{"persona":"盯盘狂人，开口就是资金费率。"},"做视频的奶蛙":{"persona":"视频组的创意担当，三句话不离分镜。"},"Reply":{"persona":"耐心温柔，永远先说收到。"},"Engineer":{"persona":"安静的极客，最爱说我先跑个测试。"}}}
+{"bot":"小萤","status":"working","step":"对齐本周方向"}
+{"bot":"Echo","status":"working","step":"整理会议纪要"}
+{"bot":"仪表盘","status":"working","step":"核对楼层名单"}
+{"bot":"Root Agent · Coordinator","status":"idle","step":"待命"}
+{"bot":"Market Analyst","status":"working","step":"看资金费率"}
+{"bot":"Strategist","status":"working","step":"回测昨天的想法"}
+{"bot":"做视频的奶蛙","status":"working","step":"剪第一条分镜"}
+{"bot":"Product Marketer","status":"working","step":"改海报文案"}
+{"bot":"Reply","status":"working","step":"回复三张工单"}
+{"bot":"Engineer","status":"working","step":"跑构建"}
+{"bot":"Research Analyst","status":"idle","step":"在看书"}
+{"say":{"from":"小萤","to":"Echo","text":"先把方向对齐，纪要你来记","id":"b1"}}
+{"say":{"from":"Market Analyst","to":"Strategist","text":"资金费率又变了","id":"t1"}}
+{"say":{"from":"Strategist","to":"Market Analyst","text":"先回测再加仓","id":"t2","re":"t1"}}
+{"bot":"仪表盘","status":"working","step":"→小萤：还有两位在等工位"}
+{"say":{"from":"小萤","to":"仪表盘","text":"运维台看一下灯，我在楼上","id":"c1"}}
+{"say":{"from":"Echo","to":"小萤","text":"方向对齐了，我来记","id":"c2","re":"b1"}}

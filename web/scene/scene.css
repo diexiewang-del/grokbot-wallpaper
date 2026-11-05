@@ -34,7 +34,7 @@
 .hqt {
   display: flex; flex-direction: column; align-items: center;
   pointer-events: none; user-select: none; -webkit-user-select: none;
-  font-family: Inter, system-ui, -apple-system, "Segoe UI", sans-serif;
+  font-family: Inter, "Noto Sans SC", "Noto Sans CJK SC", "PingFang SC", "Hiragino Sans GB", "Microsoft YaHei", system-ui, sans-serif;
 }
 /* animate the children only: CSS2DRenderer owns the transform of .hqt itself */
 .hqt > * { animation: hqt-in .22s cubic-bezier(.2, .8, .2, 1); }
@@ -71,3 +71,36 @@
   .hqt > * { animation: none; }
   .hq-loading-track > i { animation: none; width: 100%; opacity: .3; }
 }
+
+/* Speech bubbles for real say-lines. Text is set with textContent. Emotes are local and wordless. */
+.hq-say {
+  position: absolute; z-index: 6; max-width: 260px; pointer-events: none;
+  font-family: Inter, "Noto Sans SC", "Noto Sans CJK SC", "PingFang SC", "Hiragino Sans GB", "Microsoft YaHei", "WenQuanYi Micro Hei", sans-serif;
+}
+.hq-say-to { font: 700 12px/1.2 Inter, "Noto Sans SC", "PingFang SC", "Microsoft YaHei", "WenQuanYi Micro Hei", sans-serif; color: #6A4A12; margin: 0 4px 4px; }
+.hq-say-text {
+  background: #fffef8; color: #1D1D1F; border: 3px solid #E2B657; border-radius: 16px; padding: 8px 12px;
+  font: 700 16px/1.35 Inter, "Noto Sans SC", "PingFang SC", "Microsoft YaHei", "WenQuanYi Micro Hei", sans-serif;
+  box-shadow: 0 2px 0 #E2B657, 0 10px 24px rgba(0, 0, 0, .28);
+  overflow-wrap: anywhere; word-break: break-word;
+}
+.hq-say-tail {
+  display: block; width: 10px; height: 10px; margin: -5px auto 0; background: rgba(255, 255, 255, .94);
+  transform: rotate(45deg); box-shadow: 2px 2px 2px rgba(0, 0, 0, .04);
+}
+.hq-say-in .hq-say-text { background: #1D1D1F; color: #F5F5F7; }
+.hq-say-in .hq-say-tail { background: #1D1D1F; }
+.hq-call {
+  padding: 3px 8px; border-radius: 999px; background: rgba(226, 182, 87, .95); color: #3A2A08;
+  font: 700 11px/1.2 Inter, "Noto Sans SC", "PingFang SC", "Microsoft YaHei", sans-serif;
+  white-space: nowrap; box-shadow: 0 4px 12px rgba(0, 0, 0, .15);
+}
+.hq-emote {
+  width: 28px; height: 28px; border-radius: 50%; display: grid; place-items: center;
+  background: rgba(255, 255, 255, .78); color: #8E8E93;
+  font: 700 14px/1 Inter, "Noto Sans SC", sans-serif;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, .12);
+}
+:root[data-daylight="night"] .hq-say-text { background: #fffef8; color: #1D1D1F; border-color: #E2B657; }
+:root[data-daylight="night"] .hq-say-tail { background: #fffef8; }
+:root[data-daylight="night"] .hq-say-to { color: #6A4A12; }

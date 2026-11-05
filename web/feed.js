@@ -17,11 +17,14 @@
 //   {"chat":{"Bot A":"grokbot://app/v1/agent?id=…"}}                         each bot's chat, for «Open chat»
 //   {"routines":{"bot":"Bot A","items":[{"name":"…","schedule":"…","next_run":"ISO"}]}}   a bot's routines
 //   {"check":{"bots":["Bot A","Bot B"]}}                                     the setup bot starts a status check
+//   {"say":{"from":"A","to":"B","text":"…","re":"id?","id":"id?"}}            A says to B (omit "to" for everyone)
+//   {"profile":{"A":{"persona":"…","role":"boss"}}}                          persona / boss, merged like looks
 // On top of the server's state the office gets state.finished (done lines of the last 24 h, newest first),
 // state.routines (every bot's routines, soonest first) and state.check (the latest status check: who has answered), for
 // the «Finished», «Routines» and «Status check» panels.
 import { StateStore, botIdFor } from './lib/state.js';
 import { FEED_BASE, feedFromLink } from './lib/feedbase.js';
+import { profilePatch, applyProfilePatch } from './lib/chat.js';
 
 const RELAY = 'https://relay.0xcodila.com', NTFY = 'https://ntfy.sh';
 const MAX_LINE = 4096, KEEP = 600, TICK_MS = 30e3, DAY_MS = 24 * 3600e3, PING_MS = 60e3;
@@ -126,56 +129,7 @@ export async function connectFeed({ topic, servers }, onState) {
     } catch { /* the stream retries by itself */ }
   }
   function ingest({ message, time }, replay) {
-    if (typeof message !== 'string' || message.length > MAX_LINE) return false;
-    let rec;
-    try { rec = JSON.parse(message); } catch { return false; }
-    if (!rec || typeof rec !== 'object' || Array.isArray(rec)) return false;
-    const t = typeof rec.t === 'string' ? rec.t : new Date(time * 1000).toISOString();
-    if (Array.isArray(rec.roster)) {
-      for (const name of rec.roster.slice(0, 400)) {
-        if (typeof name === 'string' && name.trim() && !store.bots.has(botIdFor(name))) store.apply({ t, bot: name, status: 'idle', step: '', listed: true }, { replay });
-      }
-      return true;
-    }
-    if (isMap(rec.looks)) {
-      for (const [name, look] of Object.entries(rec.looks).slice(0, 400)) (cfg[name] ||= {}).look = look;
-      store.setBotsConfig(cfg);
-      return true;
-    }
-    if (isMap(rec.groups)) {                             // {"groups":{"Bot A":"Content"}}: the main bot's teams = floors
-      for (const [name, team] of Object.entries(rec.groups).slice(0, 400)) {
-        if (typeof team === 'string' && team.trim()) (cfg[name] ||= {}).floor = team.trim().slice(0, 40);
-      }
-      store.setBotsConfig(cfg);
-      return true;
-    }
-    if (isMap(rec.chat)) {                               // only app deep links and web pages (the store refuses scripts)
-      for (const [name, url] of Object.entries(rec.chat).slice(0, 400)) {
-        if (typeof url === 'string' && /^(grokbot|https):\/\//i.test(url.trim())) (cfg[name] ||= {}).chat_url = url.trim();
-      }
-      store.setBotsConfig(cfg);
-      return true;
-    }
-    if (isMap(rec.routines)) {
-      const name = typeof rec.routines.bot === 'string' ? rec.routines.bot.trim().slice(0, 80) : '';
-      if (!name || !Array.isArray(rec.routines.items)) return false;
-      const items = rec.routines.items.slice(0, 50).filter(isMap).map((r) => ({
-        routine: String(r.name ?? '').slice(0, 80), schedule: String(r.schedule ?? '').slice(0, 80),
-        next_run: Number.isFinite(Date.parse(r.next_run)) ? new Date(r.next_run).toISOString() : null,
-      })).filter((r) => r.routine);
-      routines.set(botIdFor(name), { name, items });      // a bot's latest list replaces its previous one
-      return true;
-    }
-    if (isMap(rec.check)) {                              // the setup bot asks every bot for a status line: who answers?
-      const names = (Array.isArray(rec.check.bots) ? rec.check.bots : []).filter((n) => typeof n === 'string' && n.trim())
-        .slice(0, 400).map((n) => n.trim().slice(0, 80));
-      if (!names.length) return false;
-      const ms = Number.isFinite(Date.parse(t)) ? Date.parse(t) : time * 1000;
-      if (!check || ms >= check.ms) check = { ms, names };
-      return true;
-    }
-    store.apply({ ...rec, t }, { replay });
-    return true;
+    return feedIngest({ store, cfg, routines, bag: { get check() { return check; }, set check(v) { check = v; } } }, message, time, replay);
   }
   function extras(s) {                                   // the panels' data on top of the server-shaped state
     const since = Date.now() - DAY_MS, finished = [];
@@ -225,3 +179,99 @@ async function beacon(topic, { bots, floors, tags, has }) {
 }
 
 function isMap(v) { return !!v && typeof v === 'object' && !Array.isArray(v); }
+
+/** One channel line, shared by the live office and the local mock (?mock=office). */
+export function feedIngest(ctx, message, time, replay) {
+  const { store, cfg, routines, bag } = ctx;
+  if (typeof message !== 'string' || message.length > MAX_LINE) return false;
+  let rec;
+  try { rec = JSON.parse(message); } catch { return false; }
+  if (!rec || typeof rec !== 'object' || Array.isArray(rec)) return false;
+  const t = typeof rec.t === 'string' ? rec.t : new Date(time * 1000).toISOString();
+  if (Array.isArray(rec.roster)) {
+    for (const name of rec.roster.slice(0, 400)) {
+      if (typeof name === 'string' && name.trim() && !store.bots.has(botIdFor(name))) store.apply({ t, bot: name, status: 'idle', step: '', listed: true }, { replay });
+    }
+    return true;
+  }
+  if (isMap(rec.looks)) {
+    for (const [name, look] of Object.entries(rec.looks).slice(0, 400)) (cfg[name] ||= {}).look = look;
+    store.setBotsConfig(cfg);
+    return true;
+  }
+  if (isMap(rec.groups)) {
+    for (const [name, team] of Object.entries(rec.groups).slice(0, 400)) {
+      if (typeof team === 'string' && team.trim()) (cfg[name] ||= {}).floor = team.trim().slice(0, 40);
+    }
+    store.setBotsConfig(cfg);
+    return true;
+  }
+  if (isMap(rec.chat)) {
+    for (const [name, url] of Object.entries(rec.chat).slice(0, 400)) {
+      if (typeof url === 'string' && /^(grokbot|https):\/\//i.test(url.trim())) (cfg[name] ||= {}).chat_url = url.trim();
+    }
+    store.setBotsConfig(cfg);
+    return true;
+  }
+  if (isMap(rec.routines)) {
+    const name = typeof rec.routines.bot === 'string' ? rec.routines.bot.trim().slice(0, 80) : '';
+    if (!name || !Array.isArray(rec.routines.items)) return false;
+    const items = rec.routines.items.slice(0, 50).filter(isMap).map((r) => ({
+      routine: String(r.name ?? '').slice(0, 80), schedule: String(r.schedule ?? '').slice(0, 80),
+      next_run: Number.isFinite(Date.parse(r.next_run)) ? new Date(r.next_run).toISOString() : null,
+    })).filter((r) => r.routine);
+    routines.set(botIdFor(name), { name, items });
+    return true;
+  }
+  if (isMap(rec.profile)) {
+    let n = 0;
+    for (const [name, entry] of Object.entries(rec.profile).slice(0, 400)) {
+      const who = typeof name === 'string' ? name.trim().slice(0, 80) : '';
+      const patch = profilePatch(entry);
+      if (!who || !patch) continue;
+      applyProfilePatch(cfg[who] ||= {}, patch);
+      if (!store.bots.has(botIdFor(who))) store.apply({ t, bot: who, status: 'idle', step: '', listed: true }, { replay });
+      n++;
+    }
+    if (!n) return false;
+    store.setBotsConfig(cfg);
+    return true;
+  }
+  if (isMap(rec.check)) {
+    const names = (Array.isArray(rec.check.bots) ? rec.check.bots : []).filter((n) => typeof n === 'string' && n.trim())
+      .slice(0, 400).map((n) => n.trim().slice(0, 80));
+    if (!names.length) return false;
+    const ms = Number.isFinite(Date.parse(t)) ? Date.parse(t) : time * 1000;
+    if (!bag.check || ms >= bag.check.ms) bag.check = { ms, names };
+    return true;
+  }
+  store.apply({ ...rec, t }, { replay });
+  return true;
+}
+
+/** Replay a JSONL fixture through the same reducer as a live topic. The last two lines are stamped "just now"
+ *  so speech bubbles have something fresh to show; everything else is history. Nothing is posted anywhere. */
+export function replayOffice(text, onState) {
+  const store = new StateStore({ tz: 'Europe/Sofia', quietIdleMs: QUIET_MS, hasAvatar: () => false });
+  const cfg = {};
+  const routines = new Map();
+  const bag = { check: null };
+  const rows = String(text).split('\n').map((s) => s.trim()).filter(Boolean);
+  const now = Date.now();
+  rows.forEach((row, i) => {
+    let rec;
+    try { rec = JSON.parse(row); } catch { return; }
+    const fromEnd = rows.length - 1 - i;
+    // History moves forward (a later status must not be older than the roster, or replay drops it).
+    // The last two lines are "just now" so the speech bubbles have something fresh to show.
+    const ms = fromEnd < 2 ? now - fromEnd * 900 : now - 120000 + i * 800;
+    const message = JSON.stringify(rec.t ? rec : { ...rec, t: new Date(ms).toISOString() });
+    feedIngest({ store, cfg, routines, bag }, message, ms / 1000, true);
+  });
+  store.commit();
+  const s = store.snapshot();
+  s.finished = [];
+  s.routines = [];
+  s.check = null;
+  onState(s);
+}

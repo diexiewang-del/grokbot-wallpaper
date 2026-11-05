@@ -358,3 +358,70 @@ Product rule from v2 made concrete: any user's bots get a blob without Blender.
   - `state.check` = `{ t, bots: [{ id, name, at }] }` for the latest check line of the last 6 h (`at` = the bot's own status
     line at or after `t`, else `null`). The dock shows a «Status check» card while it exists: a tick and time per bot,
     "waiting…", then "no answer" after 15 min.
+
+## v2.8 Office chat, personas, and themed floors (2026-11-05)
+
+Every line from v2.7 still works. These are extra. One JSON object per message, still ≤ 4 KB. Text is plain: the page
+never parses it as HTML. Names are the same strings the bots already use on status lines.
+
+### Say — a real line from one bot to another
+
+```json
+{"say":{"from":"小萤","to":"仪表盘","text":"先把方向对齐","id":"m1"}}
+{"say":{"from":"仪表盘","to":"小萤","text":"收到，楼层已经排好","id":"m2","re":"m1"}}
+{"say":{"from":"小萤","text":"早，各位"}}
+```
+
+- `from` (required) and `to` (optional) are bot names, ≤ 80 characters. Omit `to`, or send `everyone` / `所有人`, to
+  talk to the whole office.
+- `text` is required, clipped to 80 characters.
+- `id` and `re` are optional, `[A-Za-z0-9_-]{1,24}`. `re` is the id of the line being answered. A missing `id` is filled
+  in by the page so a later `re` can still point at a stable value when the sender set one.
+- The same `from` + `to` + `text` inside 4 seconds is one line (a status step and a say that repeat each other do not
+  double).
+
+A status `step` that starts with an addressee is also shown as a say, and the status itself is unchanged:
+
+```json
+{"bot":"仪表盘","status":"working","step":"→小萤：还有两位在等工位"}
+```
+
+`→Name：` (fullwidth colon), `→Name:` and `->Name:` all count.
+
+Recommended post (the topic stays in the environment, never in the repo):
+
+```sh
+curl -s -d '{"say":{"from":"小萤","to":"仪表盘","text":"先把方向对齐","id":"m1"}}' "https://ntfy.sh/$TOPIC"
+```
+
+On the page: a speech bubble over the speaker for about six seconds (at most two bubbles, the rest wait); the listener
+turns toward the speaker. If they are on different floors, a dashed line and a small name tag point at the other floor.
+The activity feed prints `from → to: text`. The bot card lists that bot's recent lines. An **Office chat** panel groups
+lines into threads (one thread per pair, plus `<name> → everyone`).
+
+### Profile — persona and boss
+
+```json
+{"profile":{"小萤":{"persona":"老板。温柔但果断，开口常说「先把方向对齐」。","role":"boss"}}}
+```
+
+Merge works like `looks`: a later line overwrites only the fields it includes. `persona` is clipped to 160 characters.
+`role` `"boss"` (any case) marks that bot: a crown in the scene, a Boss badge on the card, and a gold edge on their
+floor. Any other short role is kept as a label and does not change the scene. Send `"role":""` to clear it.
+`docs/examples/personas.json` is a ready body; `docs/examples/publish-personas.sh` posts it when `TOPIC` is set.
+
+State additions (older servers simply omit them): `bots[id].persona`, `bots[id].role`, `state.chats[]`
+(`t`, `id`, `re`, `from`, `fromId`, `to`, `toId`, `text`), and on each floor `theme`, `accent`, `boss`.
+
+### Themed floors
+
+The floor's **group name** picks a decor, not the bot's name. Keywords (first match): boss `老板|管理层|boss`,
+video `视频|video`, marketing `营销|marketing|品牌`, trading `交易|trading|markets|finance`, support `客服|support`,
+ops `运维|ops|协调`, eng `工程|开发|eng`. Anything else is `default`. Unknown Chinese names still get their own floor
+(`f-` plus a short hash) instead of all collapsing into Main floor. Each theme has an accent colour, a floor sign
+(the team's own name), and a small set of merged low-poly props on the open floor.
+
+### Local ambiance
+
+An **Ambiance** switch in the zoom bar plays idle motion on this computer only (`localStorage` key `bothq.ambiance`).
+It never posts, and it never writes fake dialogue into the feed. The little `z` / `♪` / `…` marks are a fixed set.

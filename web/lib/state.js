@@ -1,6 +1,8 @@
 // State reducer: journal records -> CONTRACT §4 state. Pure in-memory, clock injectable for tests. Runs in Node (the
 // server) and in the browser (the office reading a bots channel on ntfy.sh), so: no Node-only APIs here.
 import { slugify, hashColor, cleanStr, makeTime, parseTime } from './util.js';
+import { parseSay, addressedStep, sayId, profilePatch, applyProfilePatch } from './chat.js';
+import { themeForFloor, themeAccent } from './themes.js';
 
 export const LIMITS = {
   MAX_PER_FLOOR: 20,
@@ -110,6 +112,10 @@ function normBotsCfg(obj) {
     if (typeof v.color === 'string' && HEX.test(v.color.trim())) e.color = v.color.trim().toUpperCase();
     const look = normLook(v.look);
     if (look) e.look = look;
+    const persona = cleanStr(v.persona, 160);
+    if (persona) e.persona = persona;
+    const role = cleanStr(v.role, 24);
+    if (role) e.role = role.toLowerCase() === 'boss' ? 'boss' : role;
     map.set(botIdFor(key), e);
   }
   return map;
@@ -166,6 +172,7 @@ export class StateStore {
     this.feed = [];              // newest first
     this.usage = { period: 'week', total: null, resetsMs: null, updatedMs: null, bots: new Map(), routines: {} };
     this.schedules = new Map();  // bot id -> Map(routine -> entry)
+    this.chats = [];              // chronological say-lines (and addressed steps), capped
     this.floorsCfg = normFloorsCfg(null);
     this.botsCfg = normBotsCfg(null);
     this.meta = { parse_errors: 0, too_long: 0, lines: 0, events: 0, usage_lines: 0, skipped: 0, stale: 0, started_at: this.time.iso(this.now()) };
@@ -196,6 +203,9 @@ export class StateStore {
 
   apply(rec, { replay = false } = {}) {
     if (!rec || typeof rec !== 'object') return;
+    const named = cleanStr(rec.bot, 80);
+    if (isPlain(rec.profile) && !named) return this.applyProfile(rec.profile, rec.t, replay);
+    if (isPlain(rec.say) && !named) return this.addChat(parseSay(rec.say), rec.t, { via: 'say', replay });
     const type = typeof rec.type === 'string' ? rec.type.toLowerCase() : null;
     if (type === 'usage') return this.applyUsage(rec);
     if (type === 'schedule') return this.applySchedule(rec);
@@ -246,6 +256,10 @@ export class StateStore {
 
     bot.history.unshift({ ms, status, step });
     if (bot.history.length > LIMITS.HISTORY) bot.history.length = LIMITS.HISTORY;
+    if (rec.listed !== true && step) {
+      const addr = addressedStep(step);
+      if (addr) this.addChat(parseSay({ from: name, to: addr.to, text: addr.text }), rec.t, { via: 'step', replay, ms });
+    }
     this.feed.unshift({ ms, id, name: bot.name, status, step });
     if (this.feed.length > LIMITS.FEED) this.feed.length = LIMITS.FEED;
 
@@ -425,7 +439,10 @@ export class StateStore {
     for (const f of this.floorsCfg.floors) if (f.id.toLowerCase() === key || f.name.toLowerCase() === key) return f;
     for (const f of BUILTIN_FLOORS) if (f.id === key || f.name.toLowerCase() === key || f.aliases.includes(key)) return f;
     if (key === GENERAL.id || key === GENERAL.name.toLowerCase() || GENERAL.aliases.includes(key)) return GENERAL;
-    return { id: slugify(s) || 'general', name: s };
+    const id = slugify(s);
+    // A team name with no Latin/Cyrillic slug (Chinese, Japanese, …) still gets its own floor.
+    if (!id) return { id: `f-${hex(s).slice(0, 8)}`, name: s };
+    return { id, name: s };
   }
 
   baseFloorOf(bot) {
@@ -515,7 +532,12 @@ export class StateStore {
       const occ = this.members.get(f.id);
       const counts = zero();
       const ids = [...occ.entries()].sort((a, b) => a[0] - b[0]).map(([, id]) => id);
-      floors.push({ id: f.id, name: f.name, order: i + 1, bots: ids, counts, free_desks: LIMITS.MAX_PER_FLOOR - occ.size });
+      const theme = themeForFloor(f.name, f.id);
+      const boss = ids.some((id) => this.botsCfg.get(id)?.role === 'boss') || theme === 'boss';
+      floors.push({
+        id: f.id, name: f.name, order: i + 1, bots: ids, counts, free_desks: LIMITS.MAX_PER_FLOOR - occ.size,
+        theme, accent: themeAccent(theme), boss,
+      });
     });
     const floorById = new Map(floors.map((f) => [f.id, f]));
 
@@ -551,6 +573,8 @@ export class StateStore {
         avatar: cfg.avatar ?? bot.id,
         color: cfg.color ?? cfg.look?.color ?? DEMO_COLORS[bot.id] ?? hashColor(bot.id),
         look: cfg.look ?? null,
+        persona: cfg.persona ?? null,
+        role: cfg.role ?? null,
         ...(this.hasAvatar ? { has_glb: !!this.hasAvatar(cfg.avatar ?? bot.id) } : {}),
         today: {
           working_min: this.workMinutes(bot, now, day),
@@ -579,12 +603,62 @@ export class StateStore {
       floors,
       bots,
       feed: this.feed.map((f) => ({ t: iso(f.ms), bot: f.id, name: f.name, status: f.status, step: f.step })),
+      chats: this.chats.map((c) => ({
+        t: iso(c.ms), id: c.id, re: c.re, from: c.from, fromId: c.fromId, to: c.to, toId: c.toId, text: c.text, via: c.via,
+      })),
       meta: { ...this.meta },
     };
     this.cache = { nowSec: Math.floor(now / 1000), state };
     return state;
   }
 }
+
+function isPlain(v) { return !!v && typeof v === 'object' && !Array.isArray(v); }
+
+StateStore.prototype.applyProfile = function applyProfile(profile, t, replay) {
+  let n = 0;
+  for (const [name, entry] of Object.entries(profile).slice(0, 400)) {
+    const patch = profilePatch(entry);
+    const who = cleanStr(name, 80);
+    if (!patch || !who) continue;
+    const id = botIdFor(who);
+    const cur = { ...(this.botsCfg.get(id) || {}) };
+    applyProfilePatch(cur, patch);
+    if (Object.keys(cur).length) this.botsCfg.set(id, cur);
+    else this.botsCfg.delete(id);
+    if (!this.bots.has(id)) this.apply({ t, bot: who, status: 'idle', step: '', listed: true }, { replay });
+    n++;
+  }
+  if (n) this.dirty = true;
+  return n > 0;
+};
+
+StateStore.prototype.addChat = function addChat(say, t, { via = 'say', replay = false, ms: given } = {}) {
+  if (!say?.from || !say.text) return false;
+  const now = this.now();
+  let ms = Number.isFinite(given) ? given : parseTime(t);
+  if (ms === null || ms > now + 60e3) ms = now;
+  for (let i = this.chats.length - 1; i >= 0 && i >= this.chats.length - 8; i--) {
+    const c = this.chats[i];
+    if (c.from === say.from && c.to === (say.to || null) && c.text === say.text && Math.abs(c.ms - ms) < 4000) {
+      if (!c.re && say.re) c.re = say.re;
+      return false;
+    }
+  }
+  const ensure = (who) => {
+    const id = botIdFor(who);
+    if (!this.bots.has(id)) this.apply({ t: this.time.iso(ms), bot: who, status: 'idle', step: '', listed: true }, { replay });
+  };
+  ensure(say.from);
+  if (say.to) ensure(say.to);
+  this.chats.push({
+    ms, id: sayId(say, ms), re: say.re || null, from: say.from, fromId: botIdFor(say.from),
+    to: say.to || null, toId: say.to ? botIdFor(say.to) : null, text: say.text, via,
+  });
+  if (this.chats.length > 200) this.chats.splice(0, this.chats.length - 200);
+  this.dirty = true;
+  return true;
+};
 
 function num(v) {
   if (v === null || v === undefined || v === '' || typeof v === 'boolean') return null;

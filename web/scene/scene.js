@@ -10,6 +10,7 @@ import { createDaylight } from './daylight.js';
 import { createPost } from './post.js';
 import { studioCss } from './studio.js';
 import { Actor } from './actor.js';
+import { TalkDirector } from './talk.js';
 import { generateBlob } from './blobgen.js';
 import { Spring, clamp } from './spring.js';
 import { sofiaHour, fontsPromise } from './walls.js';
@@ -28,7 +29,9 @@ const SIN_E = Math.sin(Math.atan(1 / Math.SQRT2));      // sin(35.264°) = groun
 // the camera), neighbours alternating so tags never collide.
 const DESK_ORDER = [1, 3, 5, 7, 9, 11, 13, 15, 17, 19, 2, 4, 6, 8, 10, 12, 14, 16, 18, 20];
 
-let renderer, labels, camera, scene, container, callbacks, daylight, building, post;
+let renderer, labels, camera, scene, container, callbacks, daylight, building, post, talk;
+let ambiance = true;
+try { ambiance = localStorage.getItem('bothq.ambiance') !== '0'; } catch { /* private mode: ambiance stays on */ }
 let assets = null;
 let lastState = null, lastView = { currentFloor: null, selectedBot: null };
 const actors = new Map();
@@ -100,6 +103,7 @@ export function initScene(el, cbs = {}) {
   container.append(labels.domElement);
 
   scene = new THREE.Scene();
+  talk = new TalkDirector(scene);
   const pmrem = new THREE.PMREMGenerator(renderer);
   scene.environment = pmrem.fromScene(new RoomEnvironment(), 0.04).texture;
   scene.environmentIntensity = 0.55;
@@ -131,7 +135,9 @@ export function initScene(el, cbs = {}) {
   renderer.setAnimationLoop(frame);
 
   window.bothq = Object.assign(window.bothq || {}, {
+    settle,
     scene: { get camera() { return camera; }, get building() { return building; }, cam, actors, get daylight() { return daylight; }, switchFloor: (id) => building && switchFloor(id, false), settle },
+    setAmbiance: (on) => { ambiance = !!on; },
   });
 }
 
@@ -146,7 +152,12 @@ function ensureAssets() {
   if (!document.querySelector('link[href*="family=Inter"]')) {
     const l = document.createElement('link');
     l.rel = 'stylesheet';
-    l.href = 'https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;650;700&display=swap';
+    l.href = 'https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;650;700&family=Noto+Sans+SC:wght@500;700;900&display=swap';
+    document.head.append(l);
+  } else if (!document.querySelector('link[href*="Noto+Sans+SC"]')) {
+    const l = document.createElement('link');
+    l.rel = 'stylesheet';
+    l.href = 'https://fonts.googleapis.com/css2?family=Noto+Sans+SC:wght@500;700;900&display=swap';
     document.head.append(l);
   }
 }
@@ -192,6 +203,7 @@ function sync() {
   building.setScreens(flags);
   const floor = floors.find((f) => f.id === building.activeId);
   building.setDisplayData({ floorName: floor ? floor.name : '', bots: floorBots, hour: sofiaHour(state.now) });
+  talk?.sync(state);
   if (hoveredId && !actors.has(hoveredId)) hoveredId = null;
   if (!settledOnce) {
     settledOnce = true;
@@ -217,7 +229,8 @@ function settle(seconds = 3) {
     nowSec += step;
     stepCamera(step);
     building.update(step, performance.now());
-    for (const a of actors.values()) { a.hostAlpha = building.activeOpen()?.alpha ?? 1; a.tick(step, nowSec); }
+    for (const a of actors.values()) { a.hostAlpha = building.activeOpen()?.alpha ?? 1; a.ambiance = ambiance; a.tick(step, nowSec); }
+    if (seconds < 2) talk?.tick(step, nowSec, actors, building);
     for (const a of retiring) { a.tick(step, nowSec); if (a.dead) retiring.delete(a); }
   }
 }
@@ -264,6 +277,7 @@ function loadModel(id) {
 // ---------- floor switch = elevator ride ----------
 
 function switchFloor(id, first) {
+  talk?.clearLive();
   for (const a of actors.values()) { a.retire(); retiring.add(a); }
   actors.clear();
   hoveredId = null;
@@ -612,7 +626,8 @@ function frame(t) {
   updateCursorGround();
 
   const hostAlpha = building?.activeOpen()?.alpha ?? 1;
-  for (const a of actors.values()) { a.hostAlpha = hostAlpha; a.tick(dt, nowSec); }
+  for (const a of actors.values()) { a.hostAlpha = hostAlpha; a.ambiance = ambiance; a.tick(dt, nowSec); }
+  talk?.tick(dt, nowSec, actors, building);
   for (const a of retiring) {
     a.hostAlpha = a.ctx.inst.alpha;
     a.tick(dt, nowSec);
